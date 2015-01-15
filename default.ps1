@@ -81,7 +81,9 @@ function UnitTest($includeCategory, $excludeCategory) {
 
 function CleanNugetPackage() {
     # if running octopack you need to clean out the nupkg from the project with octopack installed
-	if (Test-Path  ('xxx\bin\release\')) {
-         Remove-Item 'xxx\bin\release\*.nupkg'
-    }
+	$items = Get-ChildItem -Path *.nupkg -Recurse | ?{$_.fullname -notmatch "\\packages\\?" }
+
+	foreach($item in $items) {
+		Remove-Item $item
+	}
 }
