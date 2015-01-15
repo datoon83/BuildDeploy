@@ -33,6 +33,17 @@ task PackageDeploy {
 	msbuild 
 }
 
+task DeployDatabase -depends Compile {
+	DeployDatabase
+}
+
+# deploy using fluent migrations
+function DeployDatabase() {
+	Set-Location .\database\bin\Release\
+
+	& .\Migrate.exe /assembly database.dll /provider sqlserver2008 /configPath database.dll.config /connection local
+}
+
 function UnitTest($includeCategory, $excludeCategory) {
 	$testAssemblies = Get-ChildItem .\*Tests*\bin\Release\*Tests.dll | select FullName
 
