@@ -4,6 +4,11 @@ properties {
 	$build_number = "1.0.0.0"	
 	$nugetExe = ".nuget\NuGet.exe"
     $solutionFile = "ReplaceMe.sln"
+
+    $localDeployPath = "C:\local_sites\"
+	$websiteName = "website-replace-me-name"
+	$hostHeader = "host.replace.me.name"
+	$locationOfNugetPackageToDeploy = "place-to-find-nuget-package\bin"
 }
 
 task default -depends Compile, UnitTest
@@ -33,8 +38,101 @@ task PackageDeploy {
 	msbuild 
 }
 
-task DeployDatabase -depends Compile {
+task Deploy -depends Compile, UnitTest {
 	DeployDatabase
+	DeploySite
+}
+
+# Deploys website to specific location - with an app pool of the same name (currently .Net 4) - only works with WebAdministration tools installed
+# Adds a host entry for the given name of the site
+function DeploySite() {
+	Import-Module WebAdministration
+
+	$deployLocation = $localDeployPath + $websiteName
+
+	if((Test-Path -Path $localDeployPath) -eq $false)
+	{
+		New-Item $localDeployPath -ItemType Directory
+		"Created $localDeployPath"
+	}
+
+	if((Test-Path -Path $deployLocation) -eq $false)
+	{
+		New-Item $deployLocation -ItemType Directory
+		"Created $deployLocation"
+	}
+	else {
+	    Remove-Item "$deployLocation\*" -Force -Recurse
+	    "Removed files from $deployLocation"
+	}
+	
+	$nugetPackage = Get-ChildItem -Path $locationOfNugetPackageToDeploy -Recurse -Include *.nupkg
+	"Found $nugetPackage to copy"
+
+	Copy-Item -Path $nugetPackage -Destination $deployLocation -Force
+	"Copied $nugetPackage to $deployLocation"
+
+	Dir $deployLocation | rename-item -newname {  $_.name  -replace ".nupkg",".zip"  }
+	"Renamed .nupkg to .zip"
+
+	extract-nuget-package $deployLocation $nugetPackage
+
+	if(Test-Path IIS:\AppPools\$websiteName)
+	{
+		Remove-WebAppPool -Name $websiteName
+		"$websiteName already exists - removed"
+	} 
+
+	New-WebAppPool -Name $websiteName
+	Set-ItemProperty IIS:\AppPools\$websiteName managedRuntimeVersion v4.0
+	"Created app pool $websiteName"
+
+	New-Website -Name $websiteName -Port 80 -HostHeader $hostHeader -ApplicationPool $websiteName -PhysicalPath $deployLocation -Force
+	Start-Website -Name $websiteName
+	"Started $websiteName"
+
+	$file = "C:\Windows\System32\drivers\etc\hosts"
+	add-host $file "127.0.0.1" $hostHeader
+	"Added host entry $hostHeader"
+}
+
+function extract-nuget-package($deployLocation, $nugetPackage) {
+	$shell = New-Object -com Shell.Application
+
+	$zipToUndo = $deployLocation + "\" + $nugetPackage.Name.Replace(".nupkg", ".zip")
+	$zip = $shell.NameSpace($zipToUndo)
+	ForEach($item in $zip.items())
+	{
+		$shell.Namespace($deployLocation).copyhere($item)
+	}
+	"extracted $nugetPackage to $deployLocation"
+}
+
+function add-host([string]$filename, [string]$ip, [string]$hostname) {
+	remove-host $filename $hostname
+	$ip + "`t`t" + $hostname | Out-File -encoding ASCII -append $filename
+}
+
+function remove-host([string]$filename, [string]$hostname) {
+	$c = Get-Content $filename
+	$newLines = @()
+	
+	foreach ($line in $c) {
+		$bits = [regex]::Split($line, "\t+")
+		if ($bits.count -eq 2) {
+			if ($bits[1] -ne $hostname) {
+				$newLines += $line
+			}
+		} else {
+			$newLines += $line
+		}
+	}
+	
+	# Write file
+	Clear-Content $filename
+	foreach ($line in $newLines) {
+		$line | Out-File -encoding ASCII -append $filename
+	}
 }
 
 # deploy using fluent migrations
