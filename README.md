@@ -8,3 +8,7 @@ Uses:
 
 Runs:
 - OctoPack if installed on a .csproj
+
+By Default running "psake.cmd" - from the root of the solution will build and unit test only
+
+Running "psake.cmd Deploy" will deploy database if configured using fluent migrations & deploy IIS website
