@@ -9,6 +9,9 @@ properties {
 	$websiteName = "website-replace-me-name"
 	$hostHeader = "host.replace.me.name"
 	$locationOfNugetPackageToDeploy = "place-to-find-nuget-package\bin"
+
+	$shouldDeployDatabase = $false
+	$DatabaseProjectName = "database-project-name"
 }
 
 task default -depends Compile, UnitTest
@@ -39,7 +42,9 @@ task PackageDeploy {
 }
 
 task Deploy -depends Compile, UnitTest {
-	DeployDatabase
+	if($shouldDeployDatabase -eq $shouldDeployDatabase) {
+		DeployDatabase
+	}
 	DeploySite
 }
 
@@ -137,9 +142,13 @@ function remove-host([string]$filename, [string]$hostname) {
 
 # deploy using fluent migrations
 function DeployDatabase() {
-	Set-Location .\database\bin\Release\
+	$currentLocation = Get-Location
+	Set-Location ".\$DatabaseProjectName\bin\Release\" 
 
-	& .\Migrate.exe /assembly database.dll /provider sqlserver2008 /configPath database.dll.config /connection local
+	$migrationToRun = ".\Migrate.exe /assembly $DatabaseProjectName.dll /provider sqlserver2008 /configPath $DatabaseProjectName.dll.config /connection local"
+	Invoke-Expression $migrationToRun
+
+	Set-Location $currentLocation
 }
 
 function UnitTest($includeCategory, $excludeCategory) {
