@@ -42,7 +42,7 @@ task PackageDeploy {
 }
 
 task Deploy -depends Compile, UnitTest {
-	if($shouldDeployDatabase -eq $shouldDeployDatabase) {
+	if($shouldDeployDatabase -eq $true) {
 		DeployDatabase
 	}
 	DeploySite
