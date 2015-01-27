@@ -191,6 +191,8 @@ function CleanNugetPackage() {
 	$items = Get-ChildItem -Path *.nupkg -Recurse | ?{$_.fullname -notmatch "\\packages\\?" }
 
 	foreach($item in $items) {
-		Remove-Item $item
+		if($item -ne $null) {
+			Remove-Item $item
+		}
 	}
 }
