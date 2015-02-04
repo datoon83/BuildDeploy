@@ -19,7 +19,7 @@ task default -depends Compile, UnitTest
 task Compile {	
 	CleanNugetPackage
 	
-	$restore = $nugetExe + " restore $solutionFile"
+	$restore = $nugetExe + " restore $solutionFile -NoCache"
 	Invoke-Expression $restore
 	
 	msbuild $solutionFile /m /t:Rebuild /p:Configuration=Release /verbosity:quiet /p:RunOctoPack=true /p:VisualStudioVersion=12.0 
