@@ -12,6 +12,7 @@ properties {
 
 	$shouldDeployDatabase = $false
 	$DatabaseProjectName = "database-project-name"
+	$databaseInstanceName = "database-instance-name"
 }
 
 task default -depends Compile, UnitTest
@@ -37,15 +38,12 @@ task IntegrationTest {
 	UnitTest "Integration" ""
 }
 
-task PackageDeploy {
-	msbuild 
-}
-
 task Deploy -depends Compile, UnitTest {
+	DeploySite
+
 	if($shouldDeployDatabase -eq $true) {
 		DeployDatabase
 	}
-	DeploySite
 }
 
 # Deploys website to specific location - with an app pool of the same name (currently .Net 4) - only works with WebAdministration tools installed
@@ -143,12 +141,78 @@ function remove-host([string]$filename, [string]$hostname) {
 # deploy using fluent migrations
 function DeployDatabase() {
 	$currentLocation = Get-Location
+
+	CreateDatabase
+
+	Set-Location $currentLocation
+
+	$currentLocation = Get-Location
 	Set-Location ".\$DatabaseProjectName\bin\Release\" 
 
 	$migrationToRun = ".\Migrate.exe /assembly $DatabaseProjectName.dll /provider sqlserver2008 /configPath $DatabaseProjectName.dll.config /connection local"
 	Invoke-Expression $migrationToRun
 
 	Set-Location $currentLocation
+
+	CreateDatabaseUser
+}
+
+function CreateDatabase()
+{
+	Import-Module "sqlps" -DisableNameChecking
+
+	$smo = New-Object Microsoft.SqlServer.Management.Smo.Server $env:ComputerName
+
+	if($smo.databases.item($databaseInstanceName) -eq $null)
+	{
+		"db doesn't exist"
+		$db = New-Object Microsoft.SqlServer.Management.Smo.Database($smo, $databaseInstanceName)
+		$db.create()	
+		"db created $databaseInstanceName"
+	}
+}
+
+function CreateDatabaseUser() 
+{
+	Import-Module "sqlps" -DisableNameChecking
+
+	$smo = New-Object Microsoft.SqlServer.Management.Smo.Server $env:ComputerName
+
+	$sqlUserName = "IIS APPPOOL\$websiteName"
+
+	if (($smo.logins).Name -contains $sqlUserName) {
+		"sql user does exist"
+	} else {
+		"user does not exist"
+
+	    $login = new-object Microsoft.SqlServer.Management.Smo.Login($env:ComputerName, $sqlUserName)
+		$login.LoginType = 'WindowsUser'
+		$login.PasswordPolicyEnforced = $false
+		$login.PasswordExpirationEnabled = $false
+		$login.Create()
+
+		"created user on instance $env:ComputerName with username $sqlUserName"
+
+		$db = $smo.databases.item($databaseInstanceName)
+
+		$usr = New-Object Microsoft.SqlServer.Management.Smo.User($db, $sqlUserName)
+		$usr.Login = $sqlUserName
+		$usr.Create()
+
+		"created user on database $db with username $sqlUserName"
+
+		foreach($role in $db.roles) {
+			if($role.name -eq 'db_datareader') {
+				$role.AddMember($sqlUserName)
+				"added sql user to role db_datareader"
+			}
+
+			if($role.name -eq 'db_datawriter') {
+				$role.AddMember($sqlUserName)
+				"added sql user to role db_datawriter"
+			}
+		}
+	}
 }
 
 function UnitTest($includeCategory, $excludeCategory) {
