@@ -180,7 +180,7 @@ function CreateDatabaseUser()
 
 	$sqlUserName = "IIS APPPOOL\$websiteName"
 
-	if (($smo.logins).Name -contains $sqlUserName) {
+	if ($smo.logins.Name -like "*$websiteName*") {
 		"sql user does exist"
 	} else {
 		"user does not exist"
