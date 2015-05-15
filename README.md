@@ -1,10 +1,15 @@
 # BuildDeploy
 
-Just a template for Visual Studio build and package
+Just a template for Visual Studio build and package.
+
+Deploy locally with IIS and FluentMigrator
+
+Also runs load tests and creates specific html reports from the output - requires JMeter
 
 Uses:
 - pSake
 - NUnit version (2.6.4)
+- JMeter version (2.12)
 
 Runs:
 - OctoPack if installed on a .csproj
