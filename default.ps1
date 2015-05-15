@@ -13,9 +13,93 @@ properties {
 	$shouldDeployDatabase = $false
 	$DatabaseProjectName = "database-project-name"
 	$databaseInstanceName = "database-instance-name"
+
+	$jmeter = "D:\tools\JMeter\apache-jmeter-2.12\bin\jmeter"
+    $jMeterCMDRunner = "D:\tools\JMeter\apache-jmeter-2.12\lib\ext\CMDRunner.jar"
+    
+    $testPlan = ".\JMeter\Load-Test.jmx"
+    $reportNamePrefix = Get-Date
+    $reportFileName = "\test-result.jtl"
+
+    $relativeReportLocation = "./load-test-results/"
+
+	if((Test-Path -Path $relativeReportLocation) -eq $false) {
+		New-Item $relativeReportLocation -ItemType Directory
+	}
+
+	$reportLocation = Resolve-Path -Path $relativeReportLocation
+	$jtlReportLocation =  $reportLocation.Path + $reportFileName
 }
 
 task default -depends Compile, UnitTest
+
+task LoadTest -depends RunLoadTest, MakeLoadTestGraph, MakeLoadTestCsv, CreateHtmlReport
+
+task RunLoadTest {
+	
+	$jtlReportLocation
+
+	cmd.exe /c $jmeter -n -t $testPlan -l $jtlReportLocation | ForEach-Object {
+	    $line = $_
+
+	    if($line -match "^Waiting for possible shutdown message on port ([0-9]+)") {
+	        Write-Host "Running load test: $testPlan"
+	        $jMeterListenerPort = $matches[1];
+	        return;
+	    }
+	}
+}
+
+task CreateHtmlReport {
+	$xslt = New-Object System.Xml.Xsl.XslCompiledTransform
+
+	$xsl = ".\JMeter\jmeter-results-report.xsl"
+	$xml = $jtlReportLocation
+	$output = $reportLocation.Path + "/loadReport.html"
+
+	$xslt.Load($xsl);
+	$xslt.Transform($xml, $output)
+
+	[xml]$results = Get-Content $jtlReportLocation
+
+	$anyFailed = $results.testResults | %{$_.httpSample.s -eq $false}
+	$allTotalTime = $results.testResults | %{ ($_.httpSample | Measure-Object -Property t -Sum).Sum }
+	$allCount = $results.testResults.httpSample.Length
+	$average = $allTotalTime / $allCount
+
+	$numberOfFailedTest = $anyFailed.Count
+
+	"Average time to execute tests $average ms"
+	"Number of failed tests $numberOfFailedTest"
+
+	if($numberOfFailedTest -ne 0) {
+		throw "Too many failed performance tests $numberOfFailedTest"
+	}
+}
+
+task MakeLoadTestGraph {
+    $jMeterReportNameDatePrefix = FormatFileNameFriendlyDate($reportNamePrefix)
+ 
+    & java.exe -jar $jMeterCMDRunner --tool Reporter --generate-png "$reportLocation\$jMeterReportNameDatePrefix-graph.png" --input-jtl $jtlReportLocation --plugin-type ResponseTimesOverTime --width 800 --height 600
+}
+
+task MakeLoadTestCSV {
+    $jMeterReportNameDatePrefix = FormatFileNameFriendlyDate($reportNamePrefix)
+ 
+    & java.exe -jar $jMeterCMDRunner --tool Reporter --generate-csv "$reportLocation\$jMeterReportNameDatePrefix-details.csv" --input-jtl $jtlReportLocation --plugin-type AggregateReport 
+
+    & java.exe -jar $jMeterCMDRunner --tool Reporter --generate-csv "$reportLocation\$jMeterReportNameDatePrefix-response-times.csv" --input-jtl $jtlReportLocation --plugin-type ResponseTimesOverTime 
+
+	& java.exe -jar $jMeterCMDRunner --tool Reporter --generate-csv "$reportLocation\$jMeterReportNameDatePrefix-synthesis-report.csv" --input-jtl $jtlReportLocation --plugin-type SynthesisReport  	
+}
+
+function FormatFileNameFriendlyDate($dateTime)
+{
+        $formatedDate = $dateTime.ToUniversalTime().ToString("u") 
+        $formatedDate = $formatedDate.Replace(" ", "_")
+        $formatedDate = $formatedDate.Replace(":", "-")
+        return $formatedDate
+}
 
 task Compile {	
 	CleanNugetPackage
